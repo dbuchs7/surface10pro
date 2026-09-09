@@ -23,6 +23,11 @@ SRCDIR="${LIBCAMERA_SRC:-$HOME/libcamera-build/libcamera}"
 VIDEO_NR="${VIDEO_NR:-42}"
 DEV="/dev/video$VIDEO_NR"
 LABEL="${CARD_LABEL:-Surface Rear Camera}"
+# exclusive_caps=1 makes the node advertise CAPTURE only, and v4l2sink then
+# refuses it with "not an output device" (caps 0x24a00001, no VIDEO_OUTPUT).
+# 0 keeps both directions available, which is what the feeding pipeline needs.
+# Some browsers prefer 1; override with EXCLUSIVE_CAPS=1 if yours does.
+EXCLUSIVE_CAPS="${EXCLUSIVE_CAPS:-0}"
 
 # Capture above the empty-buffer threshold, deliver a conferencing-friendly size.
 CAP_W="${CAP_W:-2560}"; CAP_H="${CAP_H:-1440}"
@@ -60,10 +65,14 @@ case "${1:-check}" in
         echo "    Abhilfe: bash scripts/50-libcamera-build.sh deps && ... build"
         ok=0
     fi
-    if modinfo v4l2loopback >/dev/null 2>&1; then
+    # modinfo lives in /usr/sbin, which is often outside a normal user's PATH,
+    # so "command not found" would otherwise read as "module missing".
+    MODINFO=$(command -v modinfo || echo /usr/sbin/modinfo)
+    if "$MODINFO" v4l2loopback >/dev/null 2>&1 \
+       || [ -n "$(find /lib/modules/"$(uname -r)" -name 'v4l2loopback*' -print -quit 2>/dev/null)" ]; then
         echo "  ✓ v4l2loopback verfügbar"
     else
-        echo "  ✗ v4l2loopback fehlt - bash $0 deps"
+        echo "  ✗ v4l2loopback für Kernel $(uname -r) nicht gebaut - bash $0 deps"
         ok=0
     fi
     command -v gst-launch-1.0 >/dev/null \
@@ -77,8 +86,15 @@ case "${1:-check}" in
     fi
     echo
     echo "=== Erkannte Kameras ==="
-    "$BUILD/src/apps/cam/cam" -l 2>/dev/null | grep -E '^\s*[0-9]+:' | sed 's/^/  /' \
-        || echo "  (keine - erst bash scripts/50-libcamera-build.sh test)"
+    CAMS=$("$BUILD/src/apps/cam/cam" -l 2>/dev/null | grep -E '^\s*[0-9]+:' || true)
+    echo "${CAMS:-  (keine)}" | sed 's/^/  /'
+    if ! echo "$CAMS" | grep -q 'CAMR'; then
+        echo
+        echo "  ✗ Die echte Kamera (CAMR) fehlt - nur virtuelle Testkameras."
+        echo "    Läuft der richtige Kernel? Aktuell: $(uname -r)"
+        echo "    Nötig ist 6.19.8-surface-3; Mainline hat die Sensor-Patches nicht."
+        ok=0
+    fi
     echo
     echo "=== Geplante Pipeline ==="
     echo "  Aufnahme:  ${CAP_W}x${CAP_H} @ ${FPS} fps"
@@ -93,7 +109,7 @@ case "${1:-check}" in
         echo "==> v4l2loopback laden"
         sudo modprobe -r v4l2loopback 2>/dev/null || true
         sudo modprobe v4l2loopback video_nr="$VIDEO_NR" \
-            card_label="$LABEL" exclusive_caps=1
+            card_label="$LABEL" exclusive_caps="$EXCLUSIVE_CAPS"
         sleep 1
     fi
     [ -e "$DEV" ] || { echo "$DEV wurde nicht angelegt." >&2; exit 1; }
@@ -118,8 +134,8 @@ case "${1:-check}" in
     [ "${ans,,}" = "y" ] || exit 1
 
     echo "==> Modulkonfiguration"
-    printf 'options v4l2loopback video_nr=%s card_label="%s" exclusive_caps=1\n' \
-        "$VIDEO_NR" "$LABEL" | sudo tee "$MODCONF" >/dev/null
+    printf 'options v4l2loopback video_nr=%s card_label="%s" exclusive_caps=%s\n' \
+        "$VIDEO_NR" "$LABEL" "$EXCLUSIVE_CAPS" | sudo tee "$MODCONF" >/dev/null
     echo v4l2loopback | sudo tee "$LOADCONF" >/dev/null
 
     echo "==> Benutzerdienst"
