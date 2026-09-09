@@ -13,7 +13,7 @@ Es wird kein Fernzugriff auf die Hardware vorausgesetzt.
 |----------------|---------------------------------------------------------------|
 | Touchscreen    | ✅ läuft stabil (nach Abschalten von iptsd)                    |
 | Stift          | ❌ Treiberlücke — lokal ausgeschöpft, Bericht vorbereitet      |
-| Kamera (Rück)  | ✅ von libcamera 0.7.2 erkannt — Feinarbeit läuft              |
+| Kamera (Rück)  | ✅ nimmt auf, ~30 fps — Brücke zu /dev/video* offen            |
 | Kamera (Front/IR) | ❌ keine Sensortreiber (IMX681, VD55G0)                     |
 
 **Gemessener Zustand vom Gerät: [docs/04-befund.md](docs/04-befund.md)** — dort
@@ -69,6 +69,7 @@ scripts/
   36-hid-driver-probe.sh          HID-Treiberbindung prüfen und umhängen
   50-libcamera-build.sh           libcamera aus Quellen bauen und testen
   51-dmabuf-access.sh             dma-buf-Zugriff für den Software-ISP
+  52-raw-to-image.sh              Rohaufnahmen in PNG umwandeln
   90-uninstall-surface-kernel.sh  Rollback
 docs/
   01-hardware-status.md           Support-Matrix mit Quellen

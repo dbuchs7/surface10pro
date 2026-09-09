@@ -255,3 +255,60 @@ IPU6-Kameras erscheinen **nicht** als klassische `/dev/video*`-Geräte. Zoom,
 Teams und die meisten Browser suchen aber genau dort. Dafür braucht es
 `v4l2loopback` zusammen mit `v4l2-relayd`, das den libcamera-Stream dorthin
 spiegelt — derselbe Weg wie beim Surface Pro 9.
+
+---
+
+## Die Rückkamera nimmt auf (09.09.2026)
+
+Erste erfolgreiche Aufnahme, drei Bilder in Folge:
+
+```
+cam0: Capture 3 frames
+1445.022040 (0.00 fps)  cam0-stream0 seq: 000000 bytesused: 52985856
+1445.055427 (29.95 fps) cam0-stream0 seq: 000001 bytesused: 52985856
+1445.088818 (29.95 fps) cam0-stream0 seq: 000002 bytesused: 52985856
+```
+
+Drei Dateien à 51 MB. Der Software-ISP lief (`Input 4224x3136-GRBG-10`) und
+nutzte dafür die GPU (`GL_RENDERER: Mesa Intel(R) Graphics (MTL)`).
+Konfiguriert war `4216x3136-ABGR8888/sRGB` bei rund 30 Bildern pro Sekunde.
+
+Damit ist die Kamerakette vom Sensor bis zum fertigen Bild geschlossen.
+
+### Bildgeometrie
+
+Die Rohdateien enthalten den ungeschnittenen Puffer: 32 Bit je Pixel, Zeilen
+auf 4224 Pixel aufgefüllt bei 4216 sichtbaren.
+
+```
+52985856 Byte / 3136 Zeilen = 16896 Byte je Zeile = 4224 px × 4 Byte
+```
+
+`scripts/52-raw-to-image.sh` rechnet das aus und erzeugt PNGs.
+
+### Rechte für den Normalbetrieb
+
+Die udev-Regel aus `scripts/51-dmabuf-access.sh` greift — die Knoten gehören
+`root:video` mit Schreibrecht für die Gruppe:
+
+```
+crw-rw---- 1 root video 248, 0 /dev/dma_heap/system
+crw-rw---- 1 root video 10, 259 /dev/udmabuf
+```
+
+Fehlt nur noch die Gruppenmitgliedschaft des Benutzers, die erst nach einer
+neuen Anmeldung wirksam wird. Danach entfällt `sudo`.
+
+### Was noch offen ist
+
+**Kalibrierung.** Ohne `ov13858.yaml` für das IPA-Modul `simple` fällt
+libcamera auf `uncalibrated.yaml` zurück — Farben und Belichtung sind ungenau.
+
+**Zuschnitt-ioctls.** Der `ov13858`-Treiber implementiert sie nicht, libcamera
+setzt Ersatzwerte. Bisher ohne sichtbare Folgen.
+
+**Brücke zu `/dev/video*`.** Anwendungen wie Zoom, Teams und Browser suchen
+dort und finden die Kamera deshalb noch nicht. Nötig sind `v4l2loopback` und
+ein Weiterleitungsprozess. Zu beachten: Das GStreamer-Plugin der Distribution
+ist gegen libcamera 0.2.0 gebaut; verwendet werden muss das Plugin aus dem
+eigenen Build.
