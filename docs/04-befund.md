@@ -333,3 +333,38 @@ plausibelste Erklärung. Das ist nichts, was sich lokal konfigurieren lässt.
 Ein zweiter, unabhängig meldenswerter Befund bleibt bestehen: `intel_quickspi`
 sollte eine zu große Meldung nicht mit einem unwiederbringlichen Geräteausfall
 quittieren.
+
+---
+
+## Auch der Treiberwechsel ändert nichts
+
+Zwei weitere Versuche, beide ohne Wirkung auf den Stift:
+
+**Mainline-Kernel 7.1.2** (neuer als der Surface-Kernel, iptsd aus):
+Finger 2272 Ereignisse, Stift 0.
+
+**Bindung an `hid-multitouch`** statt `hid-generic`: Die Umstellung gelang,
+die Gerätestruktur wurde deutlich sauberer — statt neun Eingabeknoten nur noch
+zwei (`quickspi-hid 045E:0C7F` und `... Stylus`). Touch lief weiter mit 2504
+Ereignissen. Der Stift blieb bei 0.
+
+### Wichtiger Schluss daraus
+
+**Beide** Treiber legen ein Eingabegerät namens `Stylus` an. Dieser Name
+entsteht nur, wenn der HID-Report-Deskriptor eine Stift-Kollektion deklariert.
+Damit steht fest:
+
+| | |
+|---|---|
+| Deskriptor deklariert einen Stift | ✅ |
+| Kernel legt das Stift-Gerät an | ✅ |
+| Gerät sendet Stift-Berichte | ❌ |
+
+Der Digitizer *kann* einen Stift melden und *soll* es laut eigener
+Beschreibung auch — er tut es unter Linux nur nie. Das deutet auf eine
+fehlende Initialisierung hin: ein Schritt, den Windows ausführt, um den
+Digitizer in den Stiftmodus zu versetzen, und den der Linux-THC/QuickSPI-Pfad
+nicht kennt.
+
+Lokal ist damit alles ausgeschöpft. Nächster sinnvoller Schritt ist ein
+Fehlerbericht — Vorlage in [05-bugreport.md](05-bugreport.md).

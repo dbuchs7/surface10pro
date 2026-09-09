@@ -12,7 +12,7 @@ Es wird kein Fernzugriff auf die Hardware vorausgesetzt.
 | Komponente     | Status                                                        |
 |----------------|---------------------------------------------------------------|
 | Touchscreen    | ✅ läuft stabil (nach Abschalten von iptsd)                    |
-| Stift          | ❌ Digitizer meldet ihn nicht an den Kernel (Treiberlücke)     |
+| Stift          | ❌ Treiberlücke — lokal ausgeschöpft, Bericht vorbereitet      |
 | Kamera         | ⚠️ ISP + Sensortreiber laufen; Blocker in Abklärung            |
 
 **Gemessener Zustand vom Gerät: [docs/04-befund.md](docs/04-befund.md)** — dort
@@ -65,10 +65,12 @@ scripts/
   32-capture-failure.sh           Zustandsaufnahme nach einem Ausfall
   34-input-monitor.py             misst evdev-Ereignisse (Kontrolle + Stift)
   35-collect-bugreport.sh         Belege für einen Upstream-Fehlerbericht
+  36-hid-driver-probe.sh          HID-Treiberbindung prüfen und umhängen
   90-uninstall-surface-kernel.sh  Rollback
 docs/
   01-hardware-status.md           Support-Matrix mit Quellen
   02-pen-touch-setup.md           Schritt-für-Schritt-Anleitung
   03-camera-status.md             Kamera-Analyse, Workarounds, Entwicklungspfad
   04-befund.md                    Messung vom echten Gerät (09.09.2026)
+  05-bugreport.md                 fertige Vorlage für den Upstream-Bericht
 ```
