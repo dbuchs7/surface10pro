@@ -142,3 +142,51 @@ mitbringt).
 2. Klappt es: gleich `bash scripts/20-camera-analyze.sh` laufen lassen
 3. Klappt es nicht: zurück auf den Mainline-Kernel und dort Weg B testen
    (`scripts/31-pen-fix-iptsd-conflict.sh disable`)
+
+---
+
+## Nachtrag 2: Touch läuft kurz nach dem Boot, dann stirbt es
+
+Auf dem Surface-Kernel `6.19.8-surface-3` reagierte der Touchscreen **kurz nach
+dem Hochfahren**, danach nicht mehr. Der Stift zu keinem Zeitpunkt.
+
+Das ergibt eine schlüssige Abfolge:
+
+1. Beim Boot bindet `quickspi-hid` den Digitizer und liefert normale
+   HID-Ereignisse → Touch funktioniert
+2. Wenige Sekunden später startet `iptsd` (udev-getriggert; im dmesg der ersten
+   Messung bei 3,97 s sichtbar) und beansprucht das Gerät
+3. Der Digitizer wird in den Rohdatenmodus geschaltet → `quickspi-hid` bekommt
+   keine HID-Meldungen mehr, und iptsd selbst kann das Format nicht verwerten
+4. Ergebnis: beide Eingabewege tot
+
+### Korrektur einer früheren Annahme
+
+Ursprünglich stand hier, der linux-surface-Kernel brauche iptsd („Weg A").
+Das gilt für ältere Surface-Modelle mit IPTS/ITHC. **Für den Surface Pro 10
+nicht:** Dessen Digitizer (`045E:0C7F`) arbeitet im **QuickSPI-Modus** und ist
+seit **Kernel 6.14 nativ unterstützt**. Passend dazu meldet
+`iptsd-find-hidraw` auf diesem Modell „No devices found"
+([linux-surface/iptsd#180](https://github.com/linux-surface/iptsd/issues/180)).
+
+Die richtige Konfiguration für dieses Gerät lautet also:
+
+| | |
+|---|---|
+| Kernel | `6.19.8-surface-3` (oder neuer) |
+| Digitizer | `quickspi-hid`, nativ |
+| iptsd | **abgeschaltet** |
+
+Ein veröffentlichter Erfahrungsbericht zum selben Gerät auf Kernel
+`6.19.8-surface` bestätigt, dass Touchscreen und Slim Pen inklusive Radierer
+und Seitentaste damit funktionieren.
+
+### Konkreter Schritt
+
+```bash
+bash scripts/31-pen-fix-iptsd-conflict.sh disable
+sudo reboot          # dabei wieder den 6.19.8-surface-Eintrag wählen
+```
+
+Funktioniert es, sollte der Surface-Kernel dauerhaft als GRUB-Standard gesetzt
+werden, damit die Auswahl beim Booten entfällt.

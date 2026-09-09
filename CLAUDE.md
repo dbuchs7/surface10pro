@@ -4,29 +4,28 @@
 
 - **Hardware:** Microsoft Surface Pro 10 for Business (Intel Core Ultra, Meteor Lake)
 - **OS:** Zorin OS 18.1 Core (Ubuntu 24.04 LTS Unterbau)
-- **Laufender Kernel:** `7.1.2-070102-generic` (Mainline) — der ebenfalls
-  installierte `6.19.8-surface-3` wird **nicht** gebootet
+- **Laufender Kernel:** `6.19.8-surface-3` (seit dem Neustart korrekt gewählt;
+  der Mainline-Kernel `7.1.2-070102-generic` bleibt als Fallback installiert)
 - **Secure Boot:** deaktiviert, Platform in Setup Mode → kein MOK-Enrollment nötig
 
 Gemessener Zustand: `docs/04-befund.md`. Diese Datei hier nur als Kurzüberblick.
 
 ## Stand der Dinge
 
-**Stift:** Funktioniert NICHT — kein Strich. Aber: die Pakete (`iptsd`,
-`libwacom-surface`, linux-surface-Kernel) sind bereits installiert, und es
-existieren Eingabegeräte auf beiden Pfaden gleichzeitig:
+**Stift und Touch:** Auf dem Surface-Kernel reagierte Touch **kurz nach dem
+Boot** und starb dann; der Stift nie. Erklärung: `quickspi-hid` bedient den
+Digitizer korrekt, wenige Sekunden später greift das udev-getriggerte `iptsd`
+das Gerät ab und schaltet es in den Rohdatenmodus — danach liefert keiner der
+beiden Wege etwas.
 
-```
-quickspi-hid 045E:0C7F Stylus      ← nativer Mainline-Treiber
-IPTSD Virtual Stylus 045E:0C7F     ← von iptsd erzeugt
-```
+**Wichtig:** Der Pro 10 (`045E:0C7F`) nutzt **QuickSPI** und ist seit Kernel
+6.14 nativ unterstützt. **iptsd ist auf diesem Gerät nicht zuständig** und
+muss abgeschaltet werden (`iptsd-find-hidraw` meldet dort „No devices found",
+siehe linux-surface/iptsd#180). Frühere Annahme, der Surface-Kernel brauche
+iptsd, galt für ältere Modelle und war für dieses Gerät falsch.
 
-Arbeitshypothese: Konflikt zwischen iptsd und dem nativen quickspi-hid-Pfad.
-`scripts/30-pen-diagnose.sh` grenzt ein, `scripts/31-pen-fix-iptsd-conflict.sh`
-testet die Hypothese reversibel.
-
-**Touch:** Status unklar — muss getestet werden. Falls Touch geht und nur der
-Stift nicht, liegt es eher am Stift selbst (Ladung/Kopplung) als am Treiber.
+Richtige Konfiguration: Surface-Kernel + `quickspi-hid` nativ + iptsd aus.
+Umsetzung: `scripts/31-pen-fix-iptsd-conflict.sh disable`, dann Neustart.
 
 **Kamera:** Weiter als erwartet. IPU6 startet inkl. Firmware-Authentifizierung,
 `ov13858` (Rück-Sensor) ist geladen, beide Sensoren in ACPI sichtbar
