@@ -1,41 +1,45 @@
 #!/usr/bin/env bash
-# Deep stylus test: does the KERNEL deliver pen events at all?
+# Does the KERNEL deliver stylus events at all?
 #
-# Read-only. Reads directly from the evdev nodes, bypassing libinput and the
-# desktop, so the failure can be placed on one side of that line:
+# Reads directly from the evdev nodes, bypassing libinput and the desktop, to
+# place the failure on one side of that boundary:
 #
-#   bytes arrive  -> kernel is fine, problem is libinput/desktop/mapping
-#   nothing       -> driver or hardware level
+#   bytes arrive  -> kernel fine, problem is libinput/libwacom/desktop
+#   nothing       -> driver, protocol, or pen
+#
+# A negative result means nothing without a positive control, so run it twice:
+#
+#   bash 33-stylus-deep-test.sh pen      (default)
+#   bash 33-stylus-deep-test.sh touch    (control - touch is known to work)
+#
+# If the touch run also reports zero, the measurement is broken, not the pen.
 set -uo pipefail
+
+MODE="${1:-pen}"
+case "$MODE" in
+  pen|stylus) MODE=pen ;;
+  touch|finger|control) MODE=touch ;;
+  *) echo "Verwendung: $0 [pen|touch]" >&2; exit 1 ;;
+esac
 
 section() { printf '\n\033[1m=== %s ===\033[0m\n' "$1"; }
 note()    { printf '    %s\n' "$1"; }
 
-section "Alle quickspi-Eingabegeräte mit Fähigkeiten"
-# Parse /proc/bus/input/devices into: event node, name, EV bitmask, key bits.
-awk '
-/^I: /{name=""; handlers=""; ev=""; abs=""; key=""}
-/^N: Name=/{gsub(/^N: Name="|"$/,""); name=$0}
-/^H: Handlers=/{sub(/^H: Handlers=/,""); handlers=$0}
-/^B: EV=/{sub(/^B: EV=/,""); ev=$0}
-/^B: ABS=/{sub(/^B: ABS=/,""); abs=$0}
-/^B: KEY=/{sub(/^B: KEY=/,""); key=$0}
-/^$/{
-  if (name ~ /quickspi|IPTSD|Stylus|Touchscreen/) {
-    ev_node="?"
-    n=split(handlers,h," ")
-    for(i=1;i<=n;i++) if (h[i] ~ /^event/) ev_node=h[i]
-    printf "  %-10s  %-40s EV=%s\n", ev_node, substr(name,1,40), ev
-    if (abs != "") printf "              ABS=%s\n", abs
-    if (key != "") printf "              KEY=%s\n", substr(key,1,60)
-  }
-}' /proc/bus/input/devices
+# --- make sure sudo works up front ----------------------------------------
+# Previously sudo ran only inside backgrounded subshells, where a password
+# prompt fails silently and every node reports zero bytes regardless of input.
+section "Vorbedingungen"
+if ! sudo -v; then
+    echo "sudo nicht verfügbar - der Test kann nicht lesen. Abbruch." >&2
+    exit 1
+fi
+note "sudo verfügbar."
+# Keep the credential fresh while the capture runs.
+( while true; do sudo -n true 2>/dev/null; sleep 30; done ) &
+SUDO_KEEPALIVE=$!
+trap 'kill "$SUDO_KEEPALIVE" 2>/dev/null || true' EXIT
 
-note ""
-note "EV=b bedeutet SYN+KEY+ABS -> typisch für Touch/Stift."
-note "Ein Stiftgerät sollte ABS-Bits für Druck (ABS_PRESSURE) haben."
-
-# --- find candidate event nodes -------------------------------------------
+section "quickspi-Eingabegeräte"
 mapfile -t NODES < <(awk '
 /^I: /{name=""; handlers=""}
 /^N: Name=/{gsub(/^N: Name="|"$/,""); name=$0}
@@ -48,71 +52,105 @@ mapfile -t NODES < <(awk '
 }' /proc/bus/input/devices)
 
 if [ "${#NODES[@]}" = "0" ]; then
-    echo
-    echo "Keine quickspi-Eingabegeräte gefunden - hier stimmt etwas Grundlegendes nicht."
+    echo "Keine quickspi-Geräte gefunden - hier stimmt etwas Grundlegendes nicht." >&2
     exit 1
 fi
 
-section "ROHTEST: liefert der Kernel Bytes?"
-cat <<'MSG'
-
-    Es wird 15 Sekunden lang DIREKT von allen quickspi-Geräten gelesen -
-    ohne libinput, ohne Desktop.
-
-    Bitte in dieser Zeit NUR MIT DEM STIFT arbeiten:
-      - Stift aufsetzen und mehrere Striche ziehen
-      - Stift knapp über dem Glas schweben lassen
-      - Seitentaste drücken
-
-    Den Finger diesmal NICHT benutzen - sonst ist nicht unterscheidbar,
-    welches Gerät die Daten geliefert hat.
-
-MSG
-read -r -p "    Bereit? [Enter zum Start] " _
-
-declare -A BYTES
-TMPDIR_=$(mktemp -d)
-
+# Verify each node is actually readable, so "no data" cannot be confused with
+# "could not open".
+READABLE=0
 for entry in "${NODES[@]}"; do
     node="${entry%%|*}"
-    [ -r "/dev/input/$node" ] || sudo chmod a+r "/dev/input/$node" 2>/dev/null || true
-    ( timeout 15 sudo cat "/dev/input/$node" > "$TMPDIR_/$node" 2>/dev/null || true ) &
+    if sudo -n test -r "/dev/input/$node" 2>/dev/null; then
+        printf '  \033[32m✓\033[0m %-10s lesbar\n' "$node"
+        READABLE=$((READABLE + 1))
+    else
+        printf '  \033[31m✗\033[0m %-10s NICHT lesbar\n' "$node"
+    fi
 done
+note "$READABLE von ${#NODES[@]} Knoten lesbar."
+if [ "$READABLE" = "0" ]; then
+    echo "Kein Knoten lesbar - Messung nicht möglich." >&2
+    exit 1
+fi
 
-echo "    ... 15 Sekunden lang mit dem Stift arbeiten ..."
+# --- capture ---------------------------------------------------------------
+if [ "$MODE" = "pen" ]; then
+    section "MESSUNG: Stift"
+    cat <<'MSG'
+
+    15 Sekunden lang wird direkt von allen quickspi-Geräten gelesen.
+
+    Bitte NUR MIT DEM STIFT arbeiten:
+      - aufsetzen und mehrere Striche ziehen
+      - knapp über dem Glas schweben lassen
+      - Seitentaste drücken
+
+    Den Finger NICHT benutzen.
+
+MSG
+else
+    section "MESSUNG: Finger (Kontrolle)"
+    cat <<'MSG'
+
+    15 Sekunden lang wird direkt von allen quickspi-Geräten gelesen.
+
+    Bitte NUR MIT DEM FINGER arbeiten - streichen, tippen, wischen.
+    Den Stift weglegen.
+
+    Das ist die Positivkontrolle: Touch funktioniert nachweislich, hier MUSS
+    also etwas ankommen. Bleibt auch das bei null, misst der Test nicht
+    richtig und das Stiftergebnis ist bedeutungslos.
+
+MSG
+fi
+read -r -p "    Bereit? [Enter zum Start] " _
+
+TMPD=$(mktemp -d)
+for entry in "${NODES[@]}"; do
+    node="${entry%%|*}"
+    ( sudo -n timeout 15 cat "/dev/input/$node" > "$TMPD/$node" 2>/dev/null || true ) &
+done
+echo "    ... 15 Sekunden ..."
 wait
 echo
 
-printf '\033[1m    Ergebnis je Gerät:\033[0m\n'
+printf '\033[1m    Ergebnis je Gerät (%s):\033[0m\n' "$MODE"
 TOTAL=0
 for entry in "${NODES[@]}"; do
-    node="${entry%%|*}"
-    name="${entry#*|}"
-    size=$(stat -c %s "$TMPDIR_/$node" 2>/dev/null || echo 0)
+    node="${entry%%|*}"; name="${entry#*|}"
+    size=$(stat -c %s "$TMPD/$node" 2>/dev/null || echo 0)
     TOTAL=$((TOTAL + size))
     if [ "$size" -gt 0 ]; then
-        printf '      \033[32m%-10s %6s Byte\033[0m  %s\n' "$node" "$size" "$name"
+        printf '      \033[32m%-10s %7s Byte\033[0m  %s\n' "$node" "$size" "$name"
     else
-        printf '      %-10s %6s Byte  %s\n' "$node" "$size" "$name"
+        printf '      %-10s %7s Byte  %s\n' "$node" "$size" "$name"
     fi
 done
+rm -rf "$TMPD"
 
-section "BEFUND"
-if [ "$TOTAL" -gt 0 ]; then
-    echo "  Der KERNEL liefert Stift-Daten ($TOTAL Byte)."
-    echo "  → Die Treiberebene ist in Ordnung. Das Problem liegt darüber:"
-    echo "    libinput, libwacom-Definition, oder die Zuordnung im Desktop."
-    echo "    Nächster Schritt: libwacom prüfen und Sitzungstyp (Wayland/X11)."
+section "BEFUND ($MODE)"
+if [ "$MODE" = "touch" ]; then
+    if [ "$TOTAL" -gt 0 ]; then
+        echo "  Kontrolle bestanden: der Test misst korrekt ($TOTAL Byte)."
+        echo "  → Ein Nullergebnis beim Stift ist damit belastbar."
+    else
+        echo "  Kontrolle FEHLGESCHLAGEN: auch Touch liefert nichts,"
+        echo "  obwohl Touch funktioniert."
+        echo "  → Der Test misst nicht richtig. Ein Nullergebnis beim Stift"
+        echo "    sagt in dem Fall NICHTS aus."
+    fi
 else
-    echo "  Der Kernel liefert NICHTS, während der Stift benutzt wird."
-    echo "  → Der Digitizer meldet den Stift nicht. Möglichkeiten:"
-    echo "    - Stift wird vom Digitizer nicht erkannt (Protokoll/Firmware)"
-    echo "    - Stift-Meldungen kommen auf einem HID-Report, den der Treiber"
-    echo "      nicht auswertet"
-    echo "    - Hardware-/Kompatibilitätsproblem des konkreten Stifts"
+    if [ "$TOTAL" -gt 0 ]; then
+        echo "  Der Kernel liefert Stift-Daten ($TOTAL Byte)."
+        echo "  → Treiberebene in Ordnung, Problem liegt darüber:"
+        echo "    libinput, libwacom, oder Zuordnung im Desktop."
+    else
+        echo "  Der Kernel liefert nichts, während der Stift benutzt wird."
+        echo
+        echo "  WICHTIG: erst mit der Kontrolle absichern, sonst ist das"
+        echo "  Ergebnis wertlos:"
+        echo "      bash $0 touch"
+    fi
 fi
-
 echo
-note "Zum Vergleich derselbe Test mit dem FINGER (Touch funktioniert ja):"
-note "  bash $0 --touch"
-rm -rf "$TMPDIR_"
