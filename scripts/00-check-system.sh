@@ -40,7 +40,15 @@ section "Pen/touch kernel messages (ipts / ithc)"
 sudo dmesg 2>/dev/null | grep -iE 'ipts|ithc|surface_hid|hid_surface' || echo "No matches (expected before installing the surface kernel)."
 
 section "iptsd service"
-systemctl status iptsd --no-pager 2>/dev/null | head -5 || echo "iptsd not installed."
+# iptsd v3 uses udev-triggered template units (iptsd@<device>.service), so a
+# plain "systemctl status iptsd" fails even when it is running correctly.
+if ! dpkg -l 2>/dev/null | grep -q '^ii  iptsd'; then
+    echo "iptsd package not installed."
+else
+    echo "iptsd package installed."
+    systemctl list-units 'iptsd*' --all --no-pager 2>/dev/null | head -10
+    pgrep -a iptsd 2>/dev/null || echo "(no running iptsd process)"
+fi
 
 section "Input devices"
 if command -v libinput >/dev/null 2>&1; then

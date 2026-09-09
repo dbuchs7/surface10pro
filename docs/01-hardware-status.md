@@ -1,6 +1,7 @@
 # Hardware-Support-Status: Surface Pro 10 for Business unter Linux
 
-**Stand: September 2026.** Treibersupport für dieses Gerät ist noch in Bewegung
+**Stand: September 2026.** Gemessene Werte vom Gerät siehe [04-befund.md](04-befund.md) —
+dort steht der tatsächliche Zustand, diese Seite gibt den allgemeinen Rahmen. Treibersupport für dieses Gerät ist noch in Bewegung
 (Meteor Lake / Core Ultra, Gerät von 2024) — vor größeren Aktionen lohnt ein
 Blick auf die unten verlinkten Quellen, ob sich etwas geändert hat.
 
@@ -8,10 +9,10 @@ Blick auf die unten verlinkten Quellen, ob sich etwas geändert hat.
 |------------------------|-------------------------------|------------------------------------------------------|
 | Tastatur (Type Cover)  | ✅ funktioniert               | out of the box                                       |
 | Bluetooth              | ✅ funktioniert               | out of the box                                       |
-| Touchscreen            | ✅ mit linux-surface-Kernel   | `linux-image-surface` + `iptsd`                      |
-| Stift (Digitizer)      | ✅ mit linux-surface-Kernel   | `linux-image-surface` + `iptsd` + `libwacom-surface` |
-| Kamera Front (IMX681)  | ❌ kein Sensortreiber         | siehe [03-camera-status.md](03-camera-status.md)     |
-| Kamera Rück (OV13858)  | ❌ noch nicht funktionsfähig  | Treiber existiert, Verdrahtung fehlt                 |
+| Touchscreen            | ✅ läuft (quickspi-hid)       | bereits eingerichtet, siehe 04-befund.md             |
+| Stift (Digitizer)      | ✅ läuft (quickspi-hid)       | bereits eingerichtet, siehe 04-befund.md             |
+| Kamera Front (IMX681)  | ❌ kein Sensortreiber         | ACPI-HID `SONY0681` vorhanden                        |
+| Kamera Rück (OV13858)  | ⚠️ Treiber geladen, 2 Blocker | INT3472 GPIO 0x08 + libcamera zu alt                 |
 | Kamera IR (VD55G0)     | ❌ kein Sensortreiber         | Windows Hello entfällt damit                         |
 | WLAN                   | zu prüfen                     | i.d.R. Intel-Chip, meist mainline unterstützt        |
 

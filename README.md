@@ -11,10 +11,13 @@ Es wird kein Fernzugriff auf die Hardware vorausgesetzt.
 
 | Komponente     | Status                                                        |
 |----------------|---------------------------------------------------------------|
-| Stift / Touch  | ✅ lösbar über den linux-surface-Kernel                        |
-| Kamera         | ❌ Sensortreiber fehlen (ISP selbst wird unterstützt)          |
+| Stift / Touch  | ✅ funktioniert bereits                                        |
+| Kamera         | ⚠️ ISP + Sensortreiber laufen; 2 benannte Blocker offen        |
 
-Details: [docs/01-hardware-status.md](docs/01-hardware-status.md)
+**Gemessener Zustand vom Gerät: [docs/04-befund.md](docs/04-befund.md)** — Stift und
+Touch laufen bereits; bei der Kamera sind zwei konkrete Blocker identifiziert.
+
+Allgemeiner Rahmen: [docs/01-hardware-status.md](docs/01-hardware-status.md)
 
 ## Schnellstart
 
@@ -60,4 +63,5 @@ docs/
   01-hardware-status.md           Support-Matrix mit Quellen
   02-pen-touch-setup.md           Schritt-für-Schritt-Anleitung
   03-camera-status.md             Kamera-Analyse, Workarounds, Entwicklungspfad
+  04-befund.md                    Messung vom echten Gerät (09.09.2026)
 ```
