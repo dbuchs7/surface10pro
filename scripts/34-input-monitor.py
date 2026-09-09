@@ -37,8 +37,14 @@ PEN_KEYS = {0x140, 0x141, 0x14b, 0x14c}
 PEN_ABS = {0x18, 0x1a, 0x1b}
 
 
-def find_devices(path="/proc/bus/input/devices", match="quickspi"):
-    """Return [(event_node, name)] for every matching input device."""
+DIGITIZER_MARKERS = ("quickspi", "045e:0c7f", "ithc", "ipts")
+
+
+def find_devices(path="/proc/bus/input/devices", match=None):
+    """Return [(event_node, name)] for every digitizer input device.
+
+    Matches on the HID id as well as driver names, because the driver naming
+    differs between kernels while 045E:0C7F identifies this digitizer."""
     out, name, handlers = [], "", ""
     try:
         with open(path) as fh:
@@ -49,7 +55,10 @@ def find_devices(path="/proc/bus/input/devices", match="quickspi"):
                 elif line.startswith("H: Handlers="):
                     handlers = line[12:]
                 elif not line:
-                    if match in name.lower():
+                    low = name.lower()
+                    hit = (match in low) if match else any(
+                        m in low for m in DIGITIZER_MARKERS)
+                    if hit:
                         for tok in handlers.split():
                             if tok.startswith("event"):
                                 out.append((tok, name))
@@ -109,7 +118,17 @@ def main():
 
     devices = find_devices()
     if not devices:
-        print("Keine quickspi-Eingabegeräte gefunden.", file=sys.stderr)
+        print("Kein Digitizer-Eingabegerät gefunden.")
+        print("Gesucht wurde nach:", ", ".join(DIGITIZER_MARKERS))
+        print("\nVorhandene Eingabegeräte:")
+        try:
+            with open("/proc/bus/input/devices") as fh:
+                for line in fh:
+                    if line.startswith("N: Name="):
+                        print("   ", line[8:].strip().strip('"'))
+        except OSError:
+            pass
+        print("\nBitte diese Liste zurückmelden - dann passe ich die Suche an.")
         return 1
 
     print("=== Gefundene Geräte ===")
