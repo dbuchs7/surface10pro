@@ -26,19 +26,34 @@ case "$ACTION" in
     echo "==> Build-Abhängigkeiten installieren"
     sudo apt update
     sudo apt install -y \
-        git meson ninja-build pkg-config \
+        git meson ninja-build pkg-config cmake \
         python3-yaml python3-ply python3-jinja2 python3-setuptools \
         libyaml-dev libssl-dev libgnutls28-dev openssl \
         libudev-dev libevent-dev libdrm-dev libjpeg-dev \
         libtiff-dev libexif-dev \
         libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
         build-essential
+
+    # Optional: if the distro has libyuv, meson uses it instead of building
+    # the CMake subproject. Not fatal when missing.
+    sudo apt install -y libyuv-dev 2>/dev/null || \
+        echo "  (libyuv-dev nicht verfügbar - wird als Unterprojekt gebaut, dafür ist cmake nötig)"
+
     echo
     echo "Fertig. Weiter mit:  bash $0 build"
     ;;
 
   build)
-    command -v meson >/dev/null || { echo "meson fehlt - erst: bash $0 deps" >&2; exit 1; }
+    MISSING=()
+    for t in meson ninja cmake; do
+        command -v "$t" >/dev/null || MISSING+=("$t")
+    done
+    if [ "${#MISSING[@]}" -gt 0 ]; then
+        echo "Es fehlen: ${MISSING[*]}" >&2
+        echo "Nachinstallieren mit:  sudo apt install -y ${MISSING[*]}" >&2
+        echo "oder komplett:         bash $0 deps" >&2
+        exit 1
+    fi
     mkdir -p "$WORK"
     if [ -d "$SRC/.git" ]; then
         echo "==> Vorhandenen Klon aktualisieren"
