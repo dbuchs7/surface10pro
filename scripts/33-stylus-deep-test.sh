@@ -33,11 +33,7 @@ if ! sudo -v; then
     echo "sudo nicht verfügbar - der Test kann nicht lesen. Abbruch." >&2
     exit 1
 fi
-note "sudo verfügbar."
-# Keep the credential fresh while the capture runs.
-( while true; do sudo -n true 2>/dev/null; sleep 30; done ) &
-SUDO_KEEPALIVE=$!
-trap 'kill "$SUDO_KEEPALIVE" 2>/dev/null || true' EXIT
+note "sudo verfügbar (Berechtigung gilt weit länger als die 15 s Messung)."
 
 section "quickspi-Eingabegeräte"
 mapfile -t NODES < <(awk '
@@ -107,12 +103,18 @@ fi
 read -r -p "    Bereit? [Enter zum Start] " _
 
 TMPD=$(mktemp -d)
+PIDS=()
 for entry in "${NODES[@]}"; do
     node="${entry%%|*}"
     ( sudo -n timeout 15 cat "/dev/input/$node" > "$TMPD/$node" 2>/dev/null || true ) &
+    PIDS+=($!)
 done
 echo "    ... 15 Sekunden ..."
-wait
+# Only wait for the capture processes. A bare "wait" would also wait on any
+# other background job and hang the script indefinitely.
+START=$(date +%s)
+wait "${PIDS[@]}" 2>/dev/null || true
+echo "    (Messung nach $(( $(date +%s) - START )) s beendet)"
 echo
 
 printf '\033[1m    Ergebnis je Gerät (%s):\033[0m\n' "$MODE"
