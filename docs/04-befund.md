@@ -248,3 +248,37 @@ größer als der DMA-Puffer ist, sollte nicht zum unwiederbringlichen Ausfall de
 Geräts führen. Das wäre ein wertvoller Fehlerbericht an linux-surface, weil der
 Reproduktionsweg präzise ist: *iptsd aktiv auf einem QuickSPI-Gerät, Stift
 aktivieren, Digitizer stirbt mit `read DMA buffer failed -5`.*
+
+---
+
+## Bestätigt: iptsd war die Ursache — Touch läuft stabil
+
+Nach dem gründlichen Abschalten von iptsd (Instanz `iptsd@dev-hidraw0.service`
+gestoppt und maskiert, udev-Regel neutralisiert):
+
+- **Touch funktioniert dauerhaft**
+- Der Ausfall tritt **nicht mehr** auf, auch nicht beim wiederholten Entnehmen
+  des Stifts aus der Ladestation
+- Der DMA-Überlauf im `intel_quickspi`-Treiber ist damit behoben, weil der
+  Digitizer im normalen HID-Modus bleibt und keine 4356-Byte-Meldungen mehr
+  erzeugt
+
+Die Diagnose ist damit vollständig bestätigt.
+
+### Offen: der Stift zeichnet weiterhin nicht
+
+Touch ist stabil, der Stift liefert nichts. Da der Digitizer jetzt sauber
+arbeitet, ist die entscheidende Frage, auf welcher Ebene es scheitert:
+
+| Beobachtung | Bedeutung |
+|---|---|
+| Kernel liefert Bytes auf dem evdev-Knoten | Treiber in Ordnung → Problem in libinput/libwacom/Desktop |
+| Kernel liefert nichts | Digitizer meldet den Stift nicht → Treiber- oder Hardwareebene |
+
+`scripts/33-stylus-deep-test.sh` liest dafür **direkt von den evdev-Knoten**,
+unter Umgehung von libinput und Desktop, und trennt damit die beiden Fälle.
+
+Zur Einordnung: Der Digitizer legt neun Eingabegeräte an (`input1`–`input9`),
+von denen nur zwei sprechende Namen tragen (`Touchscreen` = input4,
+`Stylus` = input7). Die Stiftdaten könnten auch auf einem der unbenannten
+Geräte ankommen — deshalb liest der Test von allen gleichzeitig.
