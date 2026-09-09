@@ -190,3 +190,61 @@ sudo reboot          # dabei wieder den 6.19.8-surface-Eintrag wählen
 
 Funktioniert es, sollte der Surface-Kernel dauerhaft als GRUB-Standard gesetzt
 werden, damit die Auswahl beim Booten entfällt.
+
+---
+
+## Ursache gefunden: DMA-Pufferüberlauf im intel_quickspi-Treiber
+
+Die Zustandsaufnahme direkt nach dem Ausfall (09.09.2026, 08:57) liefert die
+vollständige Fehlerkette:
+
+```
+intel_quickspi 0000:00:10.0: Copied 4096 bytes instead of requested 4356
+intel_quickspi 0000:00:10.0: read DMA buffer failed -5
+ACPI: \_SB.PC00.THC0._RST: Excess arguments - Caller passed 1, ACPI requires 0
+intel_quickspi 0000:00:10.0: THC interrupt already unquiesce
+intel_quickspi 0000:00:10.0: Wait RESET_RESPONSE timeout, ret:0
+intel_quickspi 0000:00:10.0: Reset touch device failed, ret = -110
+```
+
+### Was passiert
+
+1. Der Digitizer sendet eine Meldung von **4356 Byte**
+2. Der DMA-Puffer des `intel_quickspi`-Treibers fasst **4096 Byte** →
+   abgeschnitten, Lesefehler `-5` (EIO)
+3. Der Treiber versucht, den Touch-Controller zurückzusetzen
+4. Der Reset läuft in einen Timeout (`-110`, ETIMEDOUT)
+5. Touch **und** Stift sind tot bis zum Neustart
+
+### Warum 4356 Byte — und warum beim Stift
+
+Im Protokoll lief zu diesem Zeitpunkt:
+
+```
+iptsd@dev-hidraw0.service   loaded active running
+875 /usr/bin/iptsd /dev/hidraw0
+```
+
+`iptsd` öffnet `/dev/hidraw0` und schaltet den Digitizer in den
+Rohdaten-/Heatmap-Modus. Dort werden große Meldungen gesendet statt kleiner
+HID-Berichte. Das Aktivieren des Stifts löst genau so eine große Meldung aus —
+deshalb das beobachtete Muster: Touch läuft kurz, Stift aus der Ladestation
+genommen, alles tot.
+
+### Konsequenz
+
+Der Befund von oben wird damit bestätigt und präzisiert: iptsd ist auf dem
+Pro 10 nicht nur überflüssig, sondern **die Ursache des Ausfalls**. Der
+Digitizer wird von `quickspi-hid` nativ bedient und braucht keinen Daemon.
+
+Zusätzlich sichtbar, aber nicht ursächlich:
+`Can't find wake GPIO resource` und die ACPI-Warnung zu `THC0._RST`
+(überzähliges Argument) — beides beeinträchtigt den Normalbetrieb nicht.
+
+### Offener Kernel-Fehler
+
+Unabhängig von iptsd ist das Verhalten des Treibers ein Bug: Eine Meldung, die
+größer als der DMA-Puffer ist, sollte nicht zum unwiederbringlichen Ausfall des
+Geräts führen. Das wäre ein wertvoller Fehlerbericht an linux-surface, weil der
+Reproduktionsweg präzise ist: *iptsd aktiv auf einem QuickSPI-Gerät, Stift
+aktivieren, Digitizer stirbt mit `read DMA buffer failed -5`.*
