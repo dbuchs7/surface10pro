@@ -19,11 +19,16 @@ anschließend Reset-Timeout (`-110`) und der Digitizer war tot bis zum
 Neustart. Das Aktivieren des Stifts löste solche Meldungen aus. Nach
 `scripts/31-pen-fix-iptsd-conflict.sh disable` läuft Touch dauerhaft stabil.
 
-**Stift: weiterhin offen.** Zeichnet nicht, obwohl der Digitizer jetzt sauber
-arbeitet und das Gerät `quickspi-hid 045E:0C7F Stylus` existiert. Offene Frage:
-Liefert der Kernel überhaupt Stift-Ereignisse? `scripts/33-stylus-deep-test.sh`
-liest dafür direkt von den evdev-Knoten (an libinput und Desktop vorbei) und
-trennt damit Treiber- von Userspace-Problem.
+**Stift: Treiberlücke, gemessen und belegt.** Direkte Messung an allen neun
+evdev-Knoten (`scripts/34-input-monitor.py`): Finger liefert 2007 Ereignisse
+(Positivkontrolle bestanden), der Stift **null** auf jedem Knoten. Es erreichen
+also gar keine Stift-Berichte den Kernel — auf libinput-/libwacom-/Desktop-Ebene
+ist nichts zu reparieren. Derselbe Stift funktioniert unter Windows, Hardware
+ist damit ausgeschlossen.
+
+Nächster billiger Versuch: Mainline-Kernel `7.1.2` testen (neuer als der
+Surface-Kernel, iptsd ist jetzt systemweit aus). Sonst: Fehlerbericht bei
+linux-surface, Belege via `scripts/35-collect-bugreport.sh`.
 
 **Wichtig:** Der Pro 10 (`045E:0C7F`) nutzt **QuickSPI** und ist seit Kernel
 6.14 nativ unterstützt. **iptsd ist auf diesem Gerät nicht zuständig** und

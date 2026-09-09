@@ -12,7 +12,7 @@ Es wird kein Fernzugriff auf die Hardware vorausgesetzt.
 | Komponente     | Status                                                        |
 |----------------|---------------------------------------------------------------|
 | Touchscreen    | ✅ läuft stabil (nach Abschalten von iptsd)                    |
-| Stift          | ❌ zeichnet nicht — Ursache in Abklärung                       |
+| Stift          | ❌ Digitizer meldet ihn nicht an den Kernel (Treiberlücke)     |
 | Kamera         | ⚠️ ISP + Sensortreiber laufen; Blocker in Abklärung            |
 
 **Gemessener Zustand vom Gerät: [docs/04-befund.md](docs/04-befund.md)** — dort
@@ -63,7 +63,8 @@ scripts/
   30-pen-diagnose.sh              Stift-Diagnose mit Live-Mitschnitt
   31-pen-fix-iptsd-conflict.sh    iptsd abschalten (disable/enable/status)
   32-capture-failure.sh           Zustandsaufnahme nach einem Ausfall
-  34-input-monitor.py             liest evdev-Ereignisse mit harter Zeitgrenze
+  34-input-monitor.py             misst evdev-Ereignisse (Kontrolle + Stift)
+  35-collect-bugreport.sh         Belege für einen Upstream-Fehlerbericht
   90-uninstall-surface-kernel.sh  Rollback
 docs/
   01-hardware-status.md           Support-Matrix mit Quellen

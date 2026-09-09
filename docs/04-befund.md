@@ -282,3 +282,54 @@ Zur Einordnung: Der Digitizer legt neun Eingabegeräte an (`input1`–`input9`),
 von denen nur zwei sprechende Namen tragen (`Touchscreen` = input4,
 `Stylus` = input7). Die Stiftdaten könnten auch auf einem der unbenannten
 Geräte ankommen — deshalb liest der Test von allen gleichzeitig.
+
+---
+
+## Endbefund Stift: der Digitizer meldet ihn nicht an den Kernel
+
+Messung mit `scripts/34-input-monitor.py`, das direkt von allen neun
+evdev-Knoten liest — an libinput und Desktop vorbei:
+
+| Durchlauf | Ergebnis |
+|---|---|
+| **Finger (Kontrolle)** | **2007 Ereignisse** auf `event4`, mit `BTN_TOUCH`, `ABS_X`, `ABS_Y` |
+| **Stift** | **0 Ereignisse** auf allen neun Knoten |
+
+Die Kontrolle beweist, dass die Messung funktioniert. Das Nullergebnis beim
+Stift ist damit belastbar.
+
+**Schlussfolgerung:** Es erreichen überhaupt keine Stift-Berichte den Kernel.
+Das ist **kein** Problem von libinput, libwacom oder der Desktop-Zuordnung —
+auf dieser Ebene könnte man nichts reparieren, weil dort nie etwas ankommt.
+
+Bemerkenswert: `event7` trägt den Namen `quickspi-hid 045E:0C7F Stylus`, das
+Gerät existiert also und der HID-Deskriptor deklariert eine Stift-Funktion.
+Es kommt nur nie ein Bericht darauf an. Der Digitizer sendet im aktuellen
+Zustand schlicht keine Stiftdaten.
+
+Gegenprobe: Derselbe Stift (Surface Slim Pen 2, geladen, per Bluetooth
+verbunden) funktioniert auf demselben Gerät **unter Windows**. Hardware und
+Stift sind damit ausgeschlossen.
+
+### Bewertung
+
+Der `intel_quickspi`-Treiber ist jung — Intels THC-Treiber kamen erst kürzlich
+in den Kernel, und der HID-over-SPI-Modus wird gerade erst ausgebaut. Eine
+fehlende Initialisierung für den Stiftbetrieb, die Windows durchführt, ist die
+plausibelste Erklärung. Das ist nichts, was sich lokal konfigurieren lässt.
+
+### Verbleibende Optionen
+
+1. **Anderen Kernel testen** — der Mainline-Kernel `7.1.2-070102-generic` ist
+   noch installiert und ist **neuer** als der Surface-Kernel 6.19.8. Da iptsd
+   jetzt systemweit abgeschaltet ist, wäre ein Testlauf dort sauber. Billigster
+   noch offener Versuch: ein Neustart.
+2. **Fehlerbericht bei linux-surface** — die Datenlage ist ungewöhnlich gut:
+   exakte Kernel-Version, saubere Messung mit Positivkontrolle, Windows als
+   Gegenprobe, plus der unabhängige iptsd/DMA-Befund.
+   `scripts/35-collect-bugreport.sh` stellt die Belege zusammen.
+3. **Warten** auf Reifung des THC-/QuickSPI-Stacks im Kernel.
+
+Ein zweiter, unabhängig meldenswerter Befund bleibt bestehen: `intel_quickspi`
+sollte eine zu große Meldung nicht mit einem unwiederbringlichen Geräteausfall
+quittieren.

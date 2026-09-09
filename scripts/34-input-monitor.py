@@ -59,6 +59,16 @@ def find_devices(path="/proc/bus/input/devices", match="quickspi"):
     return out
 
 
+def drain(fds):
+    """Discard anything buffered, so one phase cannot leak into the next."""
+    for fd in fds:
+        try:
+            while os.read(fd, 4096):
+                pass
+        except (BlockingIOError, OSError):
+            pass
+
+
 def capture(fds, duration):
     """Poll every fd until the deadline. Always terminates: the loop is bounded
     by an absolute deadline, and select() gets the remaining time as timeout."""
@@ -90,7 +100,7 @@ def capture(fds, duration):
 
 
 def main():
-    mode = sys.argv[1] if len(sys.argv) > 1 else "pen"
+    mode = sys.argv[1] if len(sys.argv) > 1 else "both"
     duration = int(sys.argv[2]) if len(sys.argv) > 2 else 15
 
     if os.geteuid() != 0:
@@ -116,6 +126,89 @@ def main():
     if not fds:
         print("Kein Gerät geöffnet - Messung nicht möglich.", file=sys.stderr)
         return 1
+
+    if mode == "both":
+        print()
+        print("=" * 60)
+        print("PHASE 1 von 2 - KONTROLLE MIT DEM FINGER")
+        print("=" * 60)
+        print("  Touch funktioniert nachweislich. Kommt hier nichts an,")
+        print("  misst das Programm nicht richtig - und dann sagt ein")
+        print("  Nullergebnis beim Stift nichts aus.")
+        print()
+        print("  Bitte NUR mit dem Finger: streichen, tippen, wischen.")
+        print()
+        try:
+            input("  [Enter] startet Phase 1 (10 s) ")
+        except EOFError:
+            pass
+        drain(fds)
+        print("  ... 10 Sekunden mit dem FINGER ...")
+        c_touch, k_touch, a_touch = capture(fds, 10)
+        n_touch = sum(c_touch.values())
+        print(f"  Phase 1 beendet: {n_touch} Ereignisse\n")
+
+        print("=" * 60)
+        print("PHASE 2 von 2 - MESSUNG MIT DEM STIFT")
+        print("=" * 60)
+        print("  Bitte NUR mit dem Stift: aufsetzen, Striche ziehen,")
+        print("  schweben lassen, Seitentaste drücken.")
+        print("  Den Finger jetzt NICHT benutzen.")
+        print()
+        try:
+            input("  [Enter] startet Phase 2 (15 s) ")
+        except EOFError:
+            pass
+        drain(fds)
+        print("  ... 15 Sekunden mit dem STIFT ...")
+        c_pen, k_pen, a_pen = capture(fds, 15)
+        n_pen = sum(c_pen.values())
+        print(f"  Phase 2 beendet: {n_pen} Ereignisse\n")
+
+        for fd in fds:
+            os.close(fd)
+
+        print("=" * 60)
+        print("ERGEBNIS")
+        print("=" * 60)
+        print(f"  Finger (Kontrolle) : {n_touch:>7} Ereignisse")
+        print(f"  Stift              : {n_pen:>7} Ereignisse")
+
+        pen_sig = (k_pen & PEN_KEYS) | (a_pen & PEN_ABS)
+        if k_pen or a_pen:
+            print("\n  Beim Stift gesehen:")
+            for c in sorted(k_pen):
+                print(f"    {KEY_NAMES.get(c, f'key 0x{c:x}')}")
+            for c in sorted(a_pen):
+                print(f"    {ABS_NAMES.get(c, f'abs 0x{c:x}')}")
+
+        print("\n=== BEFUND ===")
+        if n_touch == 0:
+            print("  Die Kontrolle ist fehlgeschlagen: auch der Finger liefert")
+            print("  nichts, obwohl Touch funktioniert.")
+            print("  → Die Messung ist unbrauchbar, das Stiftergebnis sagt nichts.")
+            print("    Möglich: der Compositor greift die Geräte exklusiv ab.")
+        elif pen_sig:
+            names = [KEY_NAMES.get(c) or ABS_NAMES.get(c) or hex(c)
+                     for c in sorted(pen_sig)]
+            print(f"  Kontrolle bestanden ({n_touch} Ereignisse).")
+            print(f"  Der Kernel liefert STIFT-Ereignisse: {', '.join(names)}")
+            print("  → Treiberebene in Ordnung. Das Problem liegt darüber:")
+            print("    libinput, libwacom oder die Zuordnung im Desktop.")
+        elif n_pen:
+            print(f"  Kontrolle bestanden ({n_touch} Ereignisse).")
+            print(f"  Beim Stift kamen {n_pen} Ereignisse an, aber KEINE")
+            print("  stiftspezifischen (kein BTN_TOOL_PEN, kein ABS_PRESSURE).")
+            print("  → Vermutlich hat die Handfläche mitgemessen.")
+        else:
+            print(f"  Kontrolle bestanden: der Finger liefert {n_touch} Ereignisse,")
+            print("  die Messung funktioniert also.")
+            print("  Der Stift liefert NULL.")
+            print("  → Belastbar: der Digitizer meldet den Stift nicht an den")
+            print("    Kernel. Das ist eine Treiberlücke, kein Konfigurations-")
+            print("    oder Desktop-Problem.")
+        print()
+        return 0
 
     print()
     if mode == "pen":
