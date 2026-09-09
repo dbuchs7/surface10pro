@@ -99,3 +99,46 @@ Die 48 `/dev/video*`-Knoten sind die ISYS-Capture-Knoten des IPU6, **keine**
 fertigen Kameras. Anwendungen wie Zoom oder Teams können damit nichts anfangen.
 Dafür braucht es später zusätzlich `v4l2loopback` + `v4l2-relayd`
 (siehe [03-camera-status.md](03-camera-status.md)).
+
+---
+
+## Nachtrag: weder Touch noch Stift reagieren
+
+Rückmeldung vom Gerät: Der Stift zeichnet nicht, **und der Touchscreen reagiert
+ebenfalls nicht**. Der Stift ist geladen und per Bluetooth verbunden — die
+BT-Verbindung betrifft aber nur Knopf und Haptik, nicht den Strich. Der Strich
+läuft über den Digitizer im Display.
+
+Damit liefert der gesamte Digitizer-Pfad nichts, obwohl beide Eingabegeräte
+angelegt sind.
+
+### Die eigentliche Ursache: eine gemischte Konfiguration
+
+Es gibt zwei in sich stimmige Wege, den Digitizer zu betreiben:
+
+| | Kernel | Digitizer-Weg | iptsd |
+|---|---|---|---|
+| **A — der linux-surface-Weg** | `6.19.8-surface-3` | IPTS/ITHC-Rohdaten | **wird gebraucht** |
+| **B — der Mainline-Weg** | neuer Mainline-Kernel | `quickspi-hid` nativ | **stört nur** |
+
+Auf dem Gerät läuft derzeit eine **Mischung aus beidem**: Mainline-Kernel
+`7.1.2-070102-generic` *plus* aktives `iptsd`. In dieser Kombination schaltet
+iptsd den Digitizer in den Rohdatenmodus und verarbeitet die Daten selbst —
+kennt aber das Format nicht. Gleichzeitig bekommt `quickspi-hid` keine normalen
+HID-Meldungen mehr, weil das Gerät umgeschaltet wurde. Ergebnis: Geräte
+sichtbar, Eingaben tot. Genau das beobachtete Symptom.
+
+Der laufende Kernel ist zudem weder der Zorin-Standardkernel (6.17 HWE) noch
+der Surface-Kernel, sondern ein Mainline-Build aus dem PPA.
+
+### Vorgehen: erst Weg A, dann Weg B
+
+**Weg A hat Vorrang** — alle Pakete dafür sind bereits installiert, es fehlt nur
+der passende Kernel, und derselbe Neustart beantwortet nebenbei die offene
+Kamera-Frage (ob der Surface-Kernel den INT3472-Patch für GPIO-Typ `0x08`
+mitbringt).
+
+1. Neu starten, im GRUB-Menü `6.19.8-surface` wählen → Touch und Stift testen
+2. Klappt es: gleich `bash scripts/20-camera-analyze.sh` laufen lassen
+3. Klappt es nicht: zurück auf den Mainline-Kernel und dort Weg B testen
+   (`scripts/31-pen-fix-iptsd-conflict.sh disable`)
