@@ -63,7 +63,7 @@ scripts/
   30-pen-diagnose.sh              Stift-Diagnose mit Live-Mitschnitt
   31-pen-fix-iptsd-conflict.sh    iptsd abschalten (disable/enable/status)
   32-capture-failure.sh           Zustandsaufnahme nach einem Ausfall
-  33-stylus-deep-test.sh          liest direkt von den evdev-Knoten
+  34-input-monitor.py             liest evdev-Ereignisse mit harter Zeitgrenze
   90-uninstall-surface-kernel.sh  Rollback
 docs/
   01-hardware-status.md           Support-Matrix mit Quellen
