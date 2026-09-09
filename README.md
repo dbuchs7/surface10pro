@@ -11,11 +11,13 @@ Es wird kein Fernzugriff auf die Hardware vorausgesetzt.
 
 | Komponente     | Status                                                        |
 |----------------|---------------------------------------------------------------|
-| Stift / Touch  | ✅ funktioniert bereits                                        |
-| Kamera         | ⚠️ ISP + Sensortreiber laufen; 2 benannte Blocker offen        |
+| Touchscreen    | ✅ läuft stabil (nach Abschalten von iptsd)                    |
+| Stift          | ❌ zeichnet nicht — Ursache in Abklärung                       |
+| Kamera         | ⚠️ ISP + Sensortreiber laufen; Blocker in Abklärung            |
 
-**Gemessener Zustand vom Gerät: [docs/04-befund.md](docs/04-befund.md)** — Stift und
-Touch laufen bereits; bei der Kamera sind zwei konkrete Blocker identifiziert.
+**Gemessener Zustand vom Gerät: [docs/04-befund.md](docs/04-befund.md)** — dort
+steht die vollständige Fehlersuche inklusive der gefundenen Ursache für den
+Touch-Ausfall (DMA-Pufferüberlauf durch iptsd).
 
 Allgemeiner Rahmen: [docs/01-hardware-status.md](docs/01-hardware-status.md)
 
@@ -25,8 +27,8 @@ Allgemeiner Rahmen: [docs/01-hardware-status.md](docs/01-hardware-status.md)
 # 1. Read-only Diagnose, ändert nichts
 bash scripts/00-check-system.sh
 
-# 2. Stift/Touchscreen einrichten (fragt vor jedem Schritt nach)
-bash scripts/10-install-pen-touch.sh
+# 2. iptsd abschalten - auf dem Pro 10 die Ursache des Digitizer-Ausfalls
+bash scripts/31-pen-fix-iptsd-conflict.sh disable
 
 # Falls nötig: sauber zurückrollen
 bash scripts/90-uninstall-surface-kernel.sh
@@ -58,6 +60,10 @@ scripts/
   10-install-pen-touch.sh         linux-surface-Kernel + iptsd + libwacom-surface
   20-camera-analyze.sh            stufenweise Kamera-Diagnose mit Befund
   21-camera-acpi-dump.sh          ACPI-Auszug zur Sensor-Verdrahtung
+  30-pen-diagnose.sh              Stift-Diagnose mit Live-Mitschnitt
+  31-pen-fix-iptsd-conflict.sh    iptsd abschalten (disable/enable/status)
+  32-capture-failure.sh           Zustandsaufnahme nach einem Ausfall
+  33-stylus-deep-test.sh          liest direkt von den evdev-Knoten
   90-uninstall-surface-kernel.sh  Rollback
 docs/
   01-hardware-status.md           Support-Matrix mit Quellen

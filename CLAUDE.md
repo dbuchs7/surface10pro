@@ -12,11 +12,18 @@ Gemessener Zustand: `docs/04-befund.md`. Diese Datei hier nur als Kurzüberblick
 
 ## Stand der Dinge
 
-**Stift und Touch:** Auf dem Surface-Kernel reagierte Touch **kurz nach dem
-Boot** und starb dann; der Stift nie. Erklärung: `quickspi-hid` bedient den
-Digitizer korrekt, wenige Sekunden später greift das udev-getriggerte `iptsd`
-das Gerät ab und schaltet es in den Rohdatenmodus — danach liefert keiner der
-beiden Wege etwas.
+**Touch: GELÖST.** Ursache war ein DMA-Pufferüberlauf: iptsd schaltete den
+Digitizer in den Rohdatenmodus, dort sendet er 4356-Byte-Meldungen, der
+DMA-Puffer von `intel_quickspi` fasst 4096 → `read DMA buffer failed -5`,
+anschließend Reset-Timeout (`-110`) und der Digitizer war tot bis zum
+Neustart. Das Aktivieren des Stifts löste solche Meldungen aus. Nach
+`scripts/31-pen-fix-iptsd-conflict.sh disable` läuft Touch dauerhaft stabil.
+
+**Stift: weiterhin offen.** Zeichnet nicht, obwohl der Digitizer jetzt sauber
+arbeitet und das Gerät `quickspi-hid 045E:0C7F Stylus` existiert. Offene Frage:
+Liefert der Kernel überhaupt Stift-Ereignisse? `scripts/33-stylus-deep-test.sh`
+liest dafür direkt von den evdev-Knoten (an libinput und Desktop vorbei) und
+trennt damit Treiber- von Userspace-Problem.
 
 **Wichtig:** Der Pro 10 (`045E:0C7F`) nutzt **QuickSPI** und ist seit Kernel
 6.14 nativ unterstützt. **iptsd ist auf diesem Gerät nicht zuständig** und
@@ -25,7 +32,7 @@ siehe linux-surface/iptsd#180). Frühere Annahme, der Surface-Kernel brauche
 iptsd, galt für ältere Modelle und war für dieses Gerät falsch.
 
 Richtige Konfiguration: Surface-Kernel + `quickspi-hid` nativ + iptsd aus.
-Umsetzung: `scripts/31-pen-fix-iptsd-conflict.sh disable`, dann Neustart.
+Diese Konfiguration ist eingerichtet und bestätigt.
 
 **Kamera:** Weiter als erwartet. IPU6 startet inkl. Firmware-Authentifizierung,
 `ov13858` (Rück-Sensor) ist geladen, beide Sensoren in ACPI sichtbar
@@ -56,10 +63,15 @@ Details und Vorgehen: `docs/03-camera-status.md`, `docs/04-befund.md`.
 
 ## Nächste Schritte
 
-1. `bash scripts/30-pen-diagnose.sh` — liefert Touch- vs. Stift-Ereignisse und
-   damit den Befund, wo der Stift hängt.
-2. Je nach Ergebnis: `scripts/31-pen-fix-iptsd-conflict.sh disable` testen.
-3. Kamera: in den linux-surface-Kernel booten (GRUB → Advanced options →
-   `6.19.8-surface`), dann `bash scripts/20-camera-analyze.sh` — prüfen, ob die
-   `GPIO type 0x08`-Warnung verschwindet.
-4. Unabhängig davon: libcamera aktualisieren.
+1. **Stift:** `bash scripts/33-stylus-deep-test.sh` — liefert die Byte-Zahlen
+   je evdev-Knoten. Kommen Bytes an, liegt das Problem in
+   libinput/libwacom/Desktop; kommt nichts, in Treiber oder Stift.
+2. **Kamera:** `bash scripts/20-camera-analyze.sh` auf dem Surface-Kernel.
+   Im letzten Log erschien `ov13858: Reset de-asserted, sensor should be ready`
+   und **keine** `GPIO type 0x08`-Warnung mehr — Blocker 1 ist womöglich
+   erledigt, dann bliebe nur libcamera (0.2.0, zu alt).
+3. **Optional:** Surface-Kernel dauerhaft als GRUB-Standard setzen, damit die
+   manuelle Auswahl beim Booten entfällt.
+4. **Offener Kernel-Bug** (unabhängig, meldenswert): `intel_quickspi` sollte
+   eine zu große Meldung nicht mit einem unwiederbringlichen Geräteausfall
+   quittieren.
