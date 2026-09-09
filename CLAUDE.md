@@ -4,79 +4,66 @@
 
 - **Hardware:** Microsoft Surface Pro 10 for Business (Intel Core Ultra, Meteor Lake)
 - **OS:** Zorin OS 18.1 Core (Ubuntu 24.04 LTS Unterbau)
-- **Laufender Kernel:** `6.19.8-surface-3` (seit dem Neustart korrekt gewählt;
-  der Mainline-Kernel `7.1.2-070102-generic` bleibt als Fallback installiert)
-- **Secure Boot:** deaktiviert, Platform in Setup Mode → kein MOK-Enrollment nötig
+- **Kernel:** `6.19.8-surface-3` ist der richtige für dieses Gerät.
+  `7.1.2-070102-generic` (Mainline) bleibt als Fallback installiert, taugt aber
+  **nicht für die Kamera** — ihm fehlen die linux-surface-Patches.
+- **Secure Boot:** deaktiviert, Platform in Setup Mode → kein MOK nötig
+- **iptsd:** abgeschaltet und maskiert. Muss so bleiben.
 
-Gemessener Zustand: `docs/04-befund.md`. Diese Datei hier nur als Kurzüberblick.
+Vollständige Fehlersuche: `docs/04-befund.md`.
 
-## Stand der Dinge
+## Stand
 
-**Touch: GELÖST.** Ursache war ein DMA-Pufferüberlauf: iptsd schaltete den
-Digitizer in den Rohdatenmodus, dort sendet er 4356-Byte-Meldungen, der
-DMA-Puffer von `intel_quickspi` fasst 4096 → `read DMA buffer failed -5`,
-anschließend Reset-Timeout (`-110`) und der Digitizer war tot bis zum
+**Touch: gelöst.** iptsd schaltete den Digitizer in den Rohdatenmodus, dort
+sendet er 4356-Byte-Meldungen, der DMA-Puffer von `intel_quickspi` fasst 4096
+→ `read DMA buffer failed -5` → Reset-Timeout `-110` → Digitizer tot bis zum
 Neustart. Das Aktivieren des Stifts löste solche Meldungen aus. Nach
-`scripts/31-pen-fix-iptsd-conflict.sh disable` läuft Touch dauerhaft stabil.
+`scripts/31-pen-fix-iptsd-conflict.sh disable` läuft Touch dauerhaft.
 
-**Stift: Treiberlücke, gemessen und belegt.** Direkte Messung an allen neun
-evdev-Knoten (`scripts/34-input-monitor.py`): Finger liefert 2007 Ereignisse
-(Positivkontrolle bestanden), der Stift **null** auf jedem Knoten. Es erreichen
-also gar keine Stift-Berichte den Kernel — auf libinput-/libwacom-/Desktop-Ebene
-ist nichts zu reparieren. Derselbe Stift funktioniert unter Windows, Hardware
-ist damit ausgeschlossen.
+**Stift: Treiberlücke, lokal ausgeschöpft.** Gemessen mit
+`scripts/34-input-monitor.py` (liest direkt von allen evdev-Knoten, mit
+Positivkontrolle): Finger ~2000–2500 Ereignisse, Stift **null**. Ohne Wirkung
+blieben: Mainline-Kernel 7.1.2, Bindung an `hid-multitouch` statt
+`hid-generic`. Beide Treiber legen ein Gerät `…Stylus` an — der HID-Deskriptor
+deklariert also einen Stift, das Gerät sendet nur nie Berichte dafür. Derselbe
+Stift funktioniert unter Windows.
+→ Nichts mehr lokal zu holen. Fertige Berichtsvorlage: `docs/05-bugreport.md`.
 
-Nächster billiger Versuch: Mainline-Kernel `7.1.2` testen (neuer als der
-Surface-Kernel, iptsd ist jetzt systemweit aus). Sonst: Fehlerbericht bei
-linux-surface, Belege via `scripts/35-collect-bugreport.sh`.
+**Kamera: aussichtsreich, Messung auf dem Surface-Kernel steht aus.**
+Auf Mainline 7.1.2 gemessen und damit erklärt:
+`GPIO type 0x08 unknown` → kein Regulator → keine Spannung → `ov13858` kann die
+Chip-ID nicht lesen (`failed to find sensor: -5`) → kein Sensor im Media-Graph
+→ libcamera findet nichts.
 
-**Wichtig:** Der Pro 10 (`045E:0C7F`) nutzt **QuickSPI** und ist seit Kernel
-6.14 nativ unterstützt. **iptsd ist auf diesem Gerät nicht zuständig** und
-muss abgeschaltet werden (`iptsd-find-hidraw` meldet dort „No devices found",
-siehe linux-surface/iptsd#180). Frühere Annahme, der Surface-Kernel brauche
-iptsd, galt für ältere Modelle und war für dieses Gerät falsch.
+Entscheidend: [linux-surface PR #1867](https://github.com/linux-surface/linux-surface/pull/1867)
+(gemerged 31.12.2025) behandelt GPIO-Typ `0x08` als Regulator `pwr1`, gibt
+`ov13858` Regulator-/Reset-/Takt-Steuerung und trägt `OVTID858` (4 Lanes,
+540 MHz) in die ipu-bridge ein — exakt diese Hardware. Diese Patches sind im
+**Surface-Kernel**, nicht in Mainline. Dazu passt, dass der Surface-Kernel
+`ov13858: Reset de-asserted, sensor should be ready` meldet.
 
-Richtige Konfiguration: Surface-Kernel + `quickspi-hid` nativ + iptsd aus.
-Diese Konfiguration ist eingerichtet und bestätigt.
+Erwartung: Auf `6.19.8-surface-3` bindet der Sensor, und es bleibt allein
+**libcamera 0.2.0** (zu alt, IPU6 braucht ≥ 0.3.2, Pro-9-Fall nutzte 0.7.1).
 
-**Kamera:** Weiter als erwartet. IPU6 startet inkl. Firmware-Authentifizierung,
-`ov13858` (Rück-Sensor) ist geladen, beide Sensoren in ACPI sichtbar
-(`OVTID858` Rück, `SONY0681` Front), drei INT3472-Bridges. Zwei konkrete
-Blocker:
+## Arbeitsweise
 
-1. `int3472-discrete INT3472:00: GPIO type 0x08 unknown` — der laufende Kernel
-   kennt GPIO-Typ `0x08` nicht. Patch existiert (Behandlung als Regulator-Pin
-   `dvdd`, `GPIO_ACTIVE_HIGH`); trat beim Surface Pro 9 identisch auf.
-   **Offene billige Frage:** Bringt der installierte linux-surface-Kernel den
-   Patch mit? Kostet nur einen Neustart zum Testen.
-2. `libcamera 0.2.0` ist zu alt — IPU6 braucht ≥ 0.3.2, der erfolgreiche
-   Pro-9-Fall nutzte 0.7.1.
-
-Details und Vorgehen: `docs/03-camera-status.md`, `docs/04-befund.md`.
-
-## Wichtig zur Arbeitsweise
-
-- **Die Skripte sind auf echter Hardware weitgehend ungetestet.** Sie entstanden
-  in einer Cloud-Session ohne Zugriff auf das Gerät; nur `00-check-system.sh`
-  ist einmal real gelaufen. Vor dem Ausführen prüfen, ob die Annahmen passen.
-- **Vor systemverändernden Schritten erklären, was passiert** — besonders bei
-  Kernel-, GRUB- und Modulthemen.
-- Änderungen möglichst **reversibel** anlegen (siehe Muster in
-  `31-pen-fix-iptsd-conflict.sh` mit `disable`/`enable`).
-- `scripts/10-install-pen-touch.sh` ist **gegenstandslos** — die Pakete sind
-  bereits installiert.
+- **Skripte vor der Auslieferung prüfen.** In dieser Sitzung sind mehrfach
+  ungetestete Skripte an der echten Hardware gescheitert: `wait` ohne
+  Argumente (Endlosschleife), `awk match()` mit drei Argumenten (Ubuntu hat
+  mawk), `grub.cfg` ohne sudo gelesen (Modus 600). Wo möglich Tests in
+  `tests/` ergänzen, sie haben zwei dieser Fehler vorab gefunden.
+- **Vor systemverändernden Schritten erklären, was passiert.**
+- Änderungen **reversibel** anlegen (Muster: `disable`/`enable`/`revert`).
+- `scripts/10-install-pen-touch.sh` ist gegenstandslos — Pakete sind installiert.
 
 ## Nächste Schritte
 
-1. **Stift:** `bash scripts/33-stylus-deep-test.sh` — liefert die Byte-Zahlen
-   je evdev-Knoten. Kommen Bytes an, liegt das Problem in
-   libinput/libwacom/Desktop; kommt nichts, in Treiber oder Stift.
-2. **Kamera:** `bash scripts/20-camera-analyze.sh` auf dem Surface-Kernel.
-   Im letzten Log erschien `ov13858: Reset de-asserted, sensor should be ready`
-   und **keine** `GPIO type 0x08`-Warnung mehr — Blocker 1 ist womöglich
-   erledigt, dann bliebe nur libcamera (0.2.0, zu alt).
-3. **Optional:** Surface-Kernel dauerhaft als GRUB-Standard setzen, damit die
-   manuelle Auswahl beim Booten entfällt.
-4. **Offener Kernel-Bug** (unabhängig, meldenswert): `intel_quickspi` sollte
-   eine zu große Meldung nicht mit einem unwiederbringlichen Geräteausfall
-   quittieren.
+1. `bash scripts/40-grub-default.sh set` → Surface-Kernel als GRUB-Standard,
+   dann Neustart und `uname -r` prüfen.
+2. `bash scripts/20-camera-analyze.sh` **auf dem Surface-Kernel** — die
+   entscheidende offene Messung.
+3. Je nach Ergebnis: libcamera ≥ 0.3.2 bauen (Distribution liefert nur 0.2.0).
+   Danach `v4l2loopback` + `v4l2-relayd`, damit Anwendungen die Kamera als
+   `/dev/video*` sehen — IPU6-Kameras erscheinen dort nicht von selbst.
+4. Optional: Fehlerbericht zum Stift und zum `intel_quickspi`-DMA-Überlauf
+   absenden (`docs/05-bugreport.md`, Belege via `scripts/35-collect-bugreport.sh`).
