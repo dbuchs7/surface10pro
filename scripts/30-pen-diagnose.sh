@@ -40,6 +40,38 @@ else
     note "iptsd nicht installiert."
 fi
 
+section "iptsd: findet es überhaupt ein Gerät?"
+# Known issue on the Pro 10 (linux-surface/iptsd#180): iptsd-find-hidraw
+# reports no devices because the digitizer runs over QuickSPI as a normal HID
+# device, not over the legacy IPTS raw-data path.
+if command -v iptsd-find-hidraw >/dev/null 2>&1; then
+    OUT=$(sudo iptsd-find-hidraw 2>&1 || true)
+    echo "$OUT" | sed 's/^/    /'
+    if echo "$OUT" | grep -qi 'no devices'; then
+        note ""
+        note "→ iptsd findet KEIN Gerät. Auf dem Pro 10 ist das der erwartete"
+        note "  Zustand: der Digitizer läuft über QuickSPI als normales"
+        note "  HID-Gerät. iptsd ist hier nicht zuständig und kann abgeschaltet"
+        note "  werden (scripts/31-pen-fix-iptsd-conflict.sh disable)."
+    fi
+else
+    note "iptsd-find-hidraw nicht vorhanden."
+fi
+
+section "iptsd-Protokoll seit dem Start"
+journalctl -b -u 'iptsd*' --no-pager 2>/dev/null | tail -25 \
+    || note "Keine Journaleinträge (oder keine Berechtigung)."
+
+section "hidraw-Geräte und zugehörige Treiber"
+for h in /sys/class/hidraw/hidraw*; do
+    [ -e "$h" ] || continue
+    dev=$(readlink -f "$h/device" 2>/dev/null || echo "?")
+    name=$(cat "$dev/../input"*/name 2>/dev/null | head -1 || cat "$dev/uevent" 2>/dev/null | grep -m1 HID_NAME | cut -d= -f2 || echo "?")
+    drv="?"
+    [ -L "$dev/driver" ] && drv=$(basename "$(readlink -f "$dev/driver")")
+    printf '    %-12s %-34s Treiber: %s\n' "$(basename "$h")" "${name:0:34}" "$drv"
+done
+
 section "libwacom-Erkennung"
 if command -v libwacom-list-local-devices >/dev/null 2>&1; then
     sudo libwacom-list-local-devices 2>&1 | head -30
