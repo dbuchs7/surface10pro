@@ -70,6 +70,7 @@ scripts/
   50-libcamera-build.sh           libcamera aus Quellen bauen und testen
   51-dmabuf-access.sh             dma-buf-Zugriff für den Software-ISP
   52-raw-to-image.sh              Rohaufnahmen in PNG umwandeln
+  53-camera-bridge.sh             Kamera als /dev/video* für Browser
   90-uninstall-surface-kernel.sh  Rollback
 docs/
   01-hardware-status.md           Support-Matrix mit Quellen
