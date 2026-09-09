@@ -187,3 +187,71 @@ Kamera-Analyse gehört deshalb auf `6.19.8-surface-3` wiederholt.
 
 Damit reduziert sich die Frage vermutlich auf libcamera: Version 0.2.0 aus
 Zorin/Ubuntu kann IPU6 nicht, nötig ist mindestens 0.3.2.
+
+---
+
+## Durchbruch: libcamera 0.7.2 erkennt die Rückkamera (09.09.2026)
+
+Auf dem Surface-Kernel `6.19.8-surface-3`, mit selbst gebautem libcamera 0.7.2
+statt der Distributionsversion 0.2.0:
+
+```
+Available cameras:
+1: Internal back camera (\_SB_.PC00.I2C3.CAMR)
+```
+
+Die Einträge `Virtual0`–`Virtual3` sind Testkameras des virtual-Pipeline-Handlers
+von libcamera, keine Hardware.
+
+### Die vollständige Kette, wie sie jetzt aussieht
+
+| Stufe | Zustand | Beleg |
+|---|---|---|
+| IPU6 ISP | ✅ | `IPU6-v4[7d19] hardware version 6`, `Connected 1 cameras` |
+| INT3472 | ✅ | `GPIO type 0x08 detected on pin 0xc6`, `con_id=pwr1`, `register_regulator returned: 0` |
+| Sensor OV13858 | ✅ | `i2c-OVTID858:00 → ov13858` |
+| Media-Graph | ✅ | Sensor als `ov13858 3-0010` in libcamera sichtbar |
+| libcamera | ✅ | ab 0.7.2; 0.2.0 der Distribution meldete nichts |
+
+### Verbliebene Hürde: Zugriff auf dma-buf
+
+Als normaler Benutzer:
+
+```
+ERROR DmaBufAllocator: Could not open any dma-buf provider
+ERROR SoftwareIsp: Failed to create DmaBufAllocator object
+WARN  SimplePipeline: Failed to create software ISP, disabling software debayering
+```
+
+Als root verschwinden diese Fehler und der Software-ISP startet. Es ist also
+reine Rechtevergabe: `/dev/dma_heap/*` und `/dev/udmabuf` gehören root.
+Behoben mit `scripts/51-dmabuf-access.sh grant` (udev-Regel für Gruppe `video`),
+statt Kamera-Programme dauerhaft als root zu betreiben.
+
+### Bekannte Einschränkungen
+
+**Sensortreiber unvollständig.** Der gepatchte `ov13858` implementiert die
+Zuschnitt-Abfragen nicht:
+
+```
+'ov13858 3-0010': Unable to get rectangle 0 on pad 0/0: Inappropriate ioctl for device
+'ov13858 3-0010': The sensor kernel driver needs to be fixed
+```
+
+libcamera setzt Ersatzwerte (4224×3136) und arbeitet weiter. Für den Betrieb
+zunächst unkritisch, kann aber Bildgeometrie und Skalierung beeinflussen.
+
+**Keine Kalibrierung.** Es fehlt eine `ov13858.yaml` für das IPA-Modul
+`simple`, libcamera fällt auf `uncalibrated.yaml` zurück. Farbwiedergabe,
+Weißabgleich und Belichtung sind damit ungenau — Bilder kommen, aber sie sehen
+nicht gut aus. Eine Kalibrierungsdatei wäre späteres Feintuning.
+
+**Front- und IR-Kamera bleiben außen vor.** Für IMX681 und VD55G0 existiert
+weiterhin kein Treiber. Nur die Rückkamera ist erreichbar.
+
+### Danach: Brücke zu /dev/video*
+
+IPU6-Kameras erscheinen **nicht** als klassische `/dev/video*`-Geräte. Zoom,
+Teams und die meisten Browser suchen aber genau dort. Dafür braucht es
+`v4l2loopback` zusammen mit `v4l2-relayd`, das den libcamera-Stream dorthin
+spiegelt — derselbe Weg wie beim Surface Pro 9.

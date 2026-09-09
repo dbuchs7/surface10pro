@@ -13,7 +13,8 @@ Es wird kein Fernzugriff auf die Hardware vorausgesetzt.
 |----------------|---------------------------------------------------------------|
 | Touchscreen    | ✅ läuft stabil (nach Abschalten von iptsd)                    |
 | Stift          | ❌ Treiberlücke — lokal ausgeschöpft, Bericht vorbereitet      |
-| Kamera         | ⚠️ ISP + Sensortreiber laufen; Blocker in Abklärung            |
+| Kamera (Rück)  | ✅ von libcamera 0.7.2 erkannt — Feinarbeit läuft              |
+| Kamera (Front/IR) | ❌ keine Sensortreiber (IMX681, VD55G0)                     |
 
 **Gemessener Zustand vom Gerät: [docs/04-befund.md](docs/04-befund.md)** — dort
 steht die vollständige Fehlersuche inklusive der gefundenen Ursache für den
@@ -66,6 +67,8 @@ scripts/
   34-input-monitor.py             misst evdev-Ereignisse (Kontrolle + Stift)
   35-collect-bugreport.sh         Belege für einen Upstream-Fehlerbericht
   36-hid-driver-probe.sh          HID-Treiberbindung prüfen und umhängen
+  50-libcamera-build.sh           libcamera aus Quellen bauen und testen
+  51-dmabuf-access.sh             dma-buf-Zugriff für den Software-ISP
   90-uninstall-surface-kernel.sh  Rollback
 docs/
   01-hardware-status.md           Support-Matrix mit Quellen
