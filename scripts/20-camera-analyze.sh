@@ -30,8 +30,15 @@ else
     bad "Keine IPU6-Initialisierung im Log."
     BLOCKERS+=("IPU6 startet nicht")
 fi
-lsmod | grep -qE '^intel_ipu6' && ok "Module: $(lsmod | grep -cE '^intel_ipu6|^ipu_bridge') geladen" \
-                               || bad "intel_ipu6 nicht geladen"
+# The driver may be built into the kernel, in which case lsmod shows nothing
+# even though it works - so check the PCI binding, not the module list.
+if [ -e /sys/bus/pci/drivers/intel-ipu6 ]; then
+    ok "intel-ipu6 an das PCI-Gerät gebunden"
+elif lsmod | grep -qE '^intel_ipu6'; then
+    ok "intel_ipu6 als Modul geladen"
+else
+    warn "intel_ipu6 weder als Modul noch als PCI-Treiber sichtbar"
+fi
 
 # --- 2. INT3472 ------------------------------------------------------------
 section "2. INT3472-Bridge (Strom, Takt, Reset)"

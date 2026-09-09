@@ -138,3 +138,52 @@ Erscheint ein `/dev/video*`-Node, funktioniert sie in Zoom, Teams, Firefox etc.
 - [hao-yao/ipu6-sensor-guide](https://github.com/hao-yao/ipu6-sensor-guide)
 - [Kernel-Doku: IPU6 ISYS](https://docs.kernel.org/admin-guide/media/ipu6-isys.html)
 - [linux-surface Camera Support Wiki](https://github.com/linux-surface/linux-surface/wiki/Camera-Support)
+
+---
+
+## Entscheidender Fund: die Patches existieren bereits (Sept. 2026)
+
+[linux-surface PR #1867](https://github.com/linux-surface/linux-surface/pull/1867)
+— „Add camera support for Surface Pro 9", **gemerged am 31.12.2025** — deckt
+exakt die Hardware des Surface Pro 10 mit ab:
+
+| Datei | Änderung | Bezug zum Pro 10 |
+|---|---|---|
+| `discrete.c` (INT3472) | GPIO-Typ **0x08** wird als Regulator `pwr1` behandelt | genau der gemeldete Blocker |
+| `ov13858.c` | Regulatoren `avdd`/`pwr1`, Reset-GPIO, xvclk, Suspend/Resume | genau der Rück-Sensor |
+| `ipu-bridge.c` | Konfiguration für **`OVTID858`**: 4 Lanes, 540 MHz | genau die ACPI-Kennung des Geräts |
+| `ov5693.c` | ACPI-ID `OVTI5693` ergänzt | betrifft den Pro 9, nicht den Pro 10 |
+
+### Der Kernel entscheidet alles
+
+Messung vom 09.09.2026 auf **Mainline 7.1.2** (ohne diese Patches):
+
+```
+int3472-discrete INT3472:00: GPIO type 0x08 unknown; the sensor may not work
+ov13858 i2c-OVTID858:00: failed to find sensor: -5
+ov13858 i2c-OVTID858:00: probe with driver ov13858 failed with error -5
+OVTID858:00 → kein Treiber
+```
+
+Die Kette ist damit vollständig erklärt: INT3472 versteht GPIO-Typ `0x08` nicht
+→ der Regulator wird nicht angelegt → der Sensor bekommt keine Spannung → der
+Treiber kann die Chip-ID nicht über I2C lesen (`-EIO`) → Probe scheitert → kein
+Sensor im Media-Graph → libcamera findet nichts.
+
+Frühere Meldung auf dem **Surface-Kernel 6.19.8-surface-3**:
+
+```
+ov13858 i2c-OVTID858:00: Reset de-asserted, sensor should be ready
+```
+
+Diese Zeile stammt aus dem **gepatchten** Treiber mit Reset-Steuerung. Sie
+existiert im Mainline-Treiber nicht.
+
+### Konsequenz
+
+Für die Kamera ist der **Surface-Kernel zwingend** — der Mainline-Kernel hat
+die nötigen Patches nicht und wird sie so bald auch nicht bekommen. Die
+Kamera-Analyse gehört deshalb auf `6.19.8-surface-3` wiederholt.
+
+Damit reduziert sich die Frage vermutlich auf libcamera: Version 0.2.0 aus
+Zorin/Ubuntu kann IPU6 nicht, nötig ist mindestens 0.3.2.
