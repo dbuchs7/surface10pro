@@ -17,10 +17,17 @@ BACKUP=/etc/default/grub.bak-surface10pro
 PATTERN="${2:-surface}"
 ACTION="${1:-status}"
 
-[ -r "$GRUB_CFG" ] || { echo "$GRUB_CFG nicht lesbar." >&2; exit 1; }
+# grub.cfg is normally mode 600 root-only, so every read needs sudo.
+if ! sudo test -r "$GRUB_CFG"; then
+    echo "$GRUB_CFG nicht lesbar - auch nicht mit sudo." >&2
+    echo "Bootet dieses System überhaupt über GRUB?" >&2
+    exit 1
+fi
 
 # Extract "<submenu id>><menuentry id>" for the newest non-recovery entry
 # whose title mentions PATTERN.
+#
+# Reads through "sudo cat" because grub.cfg is root-only.
 #
 # python3 rather than awk: match() with three arguments is a GNU awk
 # extension and Ubuntu/Zorin ship mawk, where it fails outright.
@@ -29,37 +36,33 @@ ACTION="${1:-status}"
 # the submenu has its own closing brace, which would otherwise be read as the
 # end of the submenu and hide every entry after the first.
 find_entry() {
-    python3 - "$GRUB_CFG" "$1" <<'GRUBPY'
+    sudo cat "$GRUB_CFG" | python3 -c '
 import re, sys
 
-cfg, pattern = sys.argv[1], sys.argv[2]
-id_re = re.compile(r"""\$menuentry_id_option\s+['"]([^'"]+)['"]""")
+pattern = sys.argv[1]
+id_re = re.compile(r"""\$menuentry_id_option\s+[\x27"]([^\x27"]+)[\x27"]""")
 
 depth = 0
 sub_id = None
 sub_depth = None
-try:
-    with open(cfg, errors="replace") as fh:
-        for line in fh:
-            stripped = line.strip()
-            if stripped.startswith("submenu "):
-                m = id_re.search(line)
-                sub_id = m.group(1) if m else None
-                sub_depth = depth
-            elif (stripped.startswith("menuentry ")
-                  and sub_id is not None
-                  and sub_depth is not None
-                  and depth > sub_depth
-                  and "recovery mode" not in line
-                  and pattern in line):
-                m = id_re.search(line)
-                if m:
-                    print(sub_id + ">" + m.group(1))
-                    break
-            depth += line.count("{") - line.count("}")
-except OSError:
-    pass
-GRUBPY
+for line in sys.stdin:
+    stripped = line.strip()
+    if stripped.startswith("submenu "):
+        m = id_re.search(line)
+        sub_id = m.group(1) if m else None
+        sub_depth = depth
+    elif (stripped.startswith("menuentry ")
+          and sub_id is not None
+          and sub_depth is not None
+          and depth > sub_depth
+          and "recovery mode" not in line
+          and pattern in line):
+        m = id_re.search(line)
+        if m:
+            print(sub_id + ">" + m.group(1))
+            break
+    depth += line.count("{") - line.count("}")
+' "$1"
 }
 
 case "$ACTION" in
@@ -78,7 +81,7 @@ case "$ACTION" in
         echo "  $E"
     else
         echo "  Kein Eintrag gefunden. Vorhandene Einträge:"
-        grep -oP "menuentry '\K[^']+" "$GRUB_CFG" | sed 's/^/    /'
+        sudo grep -oP "menuentry '\K[^']+" "$GRUB_CFG" | sed 's/^/    /'
     fi
     echo
     echo "Setzen mit:  sudo bash $0 set"
@@ -89,7 +92,7 @@ case "$ACTION" in
     if [ -z "$E" ]; then
         echo "Kein Menüeintrag für '$PATTERN' gefunden - nichts geändert." >&2
         echo "Vorhandene Einträge:" >&2
-        grep -oP "menuentry '\K[^']+" "$GRUB_CFG" | sed 's/^/  /' >&2
+        sudo grep -oP "menuentry '\K[^']+" "$GRUB_CFG" | sed 's/^/  /' >&2
         exit 1
     fi
     echo "Gefundener Eintrag:"
