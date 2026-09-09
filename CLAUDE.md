@@ -45,6 +45,13 @@ Secure-Boot-Status (bestimmt, ob MOK-Enrollment nötig wird), tatsächliche
 Kernel-Version, und ob im Kamera-Abschnitt `INT3472`-ACPI-Einträge oder
 IPU-Module auftauchen — das würde zeigen, wie weit die Treiberkette real kommt.
 
-Für die Kamera-Analyse ist ein ACPI-Dump der nächste sinnvolle Schritt:
+Für die Kamera: `scripts/20-camera-analyze.sh` bestimmt stufenweise, wo die
+Treiberkette abbricht. Danach `scripts/21-camera-acpi-dump.sh` für die
+Verdrahtungsanalyse. Zwei bekannte Blocker sind dokumentiert: der
+Lattice-MIPI-Aggregator (GPIO-Typ 0x12, Meteor Lake) und fehlende
+ACPI-HID-Bindung des Sensortreibers (beim Surface Pro 9 per modprobe-Alias
+gelöst). Details in docs/03-camera-status.md.
+
+Manuell ginge der ACPI-Dump so:
 `sudo acpidump -b -o acpi.dat && iasl -d *.dat`, dann `DSDT.dsl` nach
 `IMX681`, `OV13858` und `INT3472` durchsuchen.

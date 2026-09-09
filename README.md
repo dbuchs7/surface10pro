@@ -43,6 +43,8 @@ Kurzfristig ist eine externe USB-Webcam die praktikable Lösung. Der
 aussichtsreichste Entwicklungspfad ist die Rückkamera, mit dem Surface Pro 9 als
 funktionierender Vorlage.
 
+Wo die Treiberkette real abbricht, zeigt `bash scripts/20-camera-analyze.sh`.
+
 Analyse und Optionen: [docs/03-camera-status.md](docs/03-camera-status.md)
 
 ## Struktur
@@ -51,6 +53,8 @@ Analyse und Optionen: [docs/03-camera-status.md](docs/03-camera-status.md)
 scripts/
   00-check-system.sh              read-only Diagnose (Stift, Touch, Kamera, Secure Boot)
   10-install-pen-touch.sh         linux-surface-Kernel + iptsd + libwacom-surface
+  20-camera-analyze.sh            stufenweise Kamera-Diagnose mit Befund
+  21-camera-acpi-dump.sh          ACPI-Auszug zur Sensor-Verdrahtung
   90-uninstall-surface-kernel.sh  Rollback
 docs/
   01-hardware-status.md           Support-Matrix mit Quellen
