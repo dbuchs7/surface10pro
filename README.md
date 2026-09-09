@@ -78,4 +78,5 @@ docs/
   03-camera-status.md             Kamera-Analyse, Workarounds, Entwicklungspfad
   04-befund.md                    Messung vom echten Gerät (09.09.2026)
   05-bugreport.md                 fertige Vorlage für den Upstream-Bericht
+  06-distro-analyse.md            welche Distribution was löst (und was nicht)
 ```
